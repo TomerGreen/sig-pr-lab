@@ -13,7 +13,7 @@ def parse_data(filename):
 def get_fourier_data(data):
     fourier_data = np.fft.fft(data[VOLTAGE])
     fourier_data = np.abs(np.fft.fftshift(fourier_data))[6400:8000]
-    print(fourier_data)
+    fourier_data = np.abs(fourier_data)
     plt.plot(fourier_data, linewidth=0.5, c='red')
     plt.show()
 
