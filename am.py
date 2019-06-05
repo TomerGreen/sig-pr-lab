@@ -91,6 +91,7 @@ def send_im(im, carrier_freq, show_sig=False):
 
 def demodulate(sig, carrier_freq):
     fourier_sig = np.fft.fft(sig)
+    fourier_sig = np.fft.fftshift(fourier_sig)
     freq_interval = 2 * np.pi / sig.shape[0]
     plt.plot(fourier_sig)
     plt.show()
@@ -104,10 +105,54 @@ def demodulate(sig, carrier_freq):
     plt.show()
 
 
+def test_simple_demodulation():
+    x = np.arange(0, 30, 0.01)
+    sine_sig = np.sin(x)
+    freq_sig = np.fft.fft(sine_sig)
+    original = np.fft.ifft(freq_sig)
+    plt.plot(sine_sig)
+    plt.show()
+    plt.scatter(x, np.abs(freq_sig))
+    plt.show()
+    plt.plot(original)
+    plt.show()
+    # a = np.zeros(1000)
+    # a[100] = 1
+    # b = np.fft.ifft(a)
+    # plt.plot(a)
+    # plt.show()
+    # plt.plot(b)
+    # plt.show()
+
+
+def test_demodulation():
+    x = np.arange(0, 10, 0.01)
+    sine_sig = np.sin(x)
+    carrier_sig = np.cos(10*x)
+    send_sig = sine_sig * carrier_sig
+    fourier_sig = np.fft.fft(send_sig)
+    # not sure about this part
+    freq_interval = 2 * np.pi / 10
+    freq_shift = round(freq_interval * 10)
+    print(freq_shift)
+    shifted_fourier_sig = np.roll(fourier_sig, -freq_shift)
+    demodulated = np.fft.ifft(shifted_fourier_sig)
+    plt.plot(send_sig)
+    plt.show()
+    plt.scatter(x, fourier_sig, s=0.1)
+    plt.show()
+    plt.plot(shifted_fourier_sig)
+    plt.show()
+    plt.plot(demodulated)
+    plt.show()
+
+
 if __name__ == "__main__":
     # im = read_image('images/sine.jpg')
-    im = PYRAMID
-    freq = 2 * np.pi * CARRIER_WAVENUMBER / PIXEL_LEN
-    print(freq)
-    sig_to_send = send_im(im, freq, False)
-    demodulated = demodulate(sig_to_send, freq)
+    # im = PYRAMID
+    # freq = 2 * np.pi * CARRIER_WAVENUMBER / PIXEL_LEN
+    # print(freq)
+    # sig_to_send = send_im(im, freq, True)
+    # demodulated = demodulate(sig_to_send, freq)
+    # test_demodulation()
+    test_demodulation()
