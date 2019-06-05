@@ -12,10 +12,12 @@ def parse_data(filename):
 
 def get_fourier_data(data):
     fourier_data = np.fft.fft(data[VOLTAGE])
-    fourier_data = np.abs(fourier_data)[:100]
+    fourier_data = np.abs(np.fft.fftshift(fourier_data))[6400:8000]
+    print(fourier_data)
     plt.plot(fourier_data, linewidth=0.5, c='red')
     plt.show()
 
+
 if __name__ == "__main__":
-    data = parse_data('./data/test2hz.xlsx')
+    data = parse_data('./data/noiseOnly.xlsx')
     get_fourier_data(data)
