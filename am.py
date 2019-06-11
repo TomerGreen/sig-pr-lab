@@ -6,15 +6,15 @@ from skimage.color import rgb2gray
 
 
 # The value of an endline pixel in the signal
-ENDLINE_VAL = 0
+ENDLINE_VAL = 0.1
 # The value of a black pixel in the image
-BLACK_VAL = 0.5
-# The number of values that represent each pixel in the array.
-PIXEL_LEN = 1000
+BLACK_VAL = 0.2
+# The length of the signal in seconds
+SIGNAL_LEN = 10
 # The wavenumber for the sending frequency.
-CARRIER_WAVENUMBER = 1
-# The sent signal will start with this many pixels of endline_val.
-START_SIG_LEN = 3
+CARRIER_FREQ = 10
+# Signal that marks the start and end of the image.
+START_END_SIG = np.array([ENDLINE_VAL, BLACK_VAL, ENDLINE_VAL])
 # Amplitude in volts of the signal sent.
 AMPLITUDE = 0.05
 # Voltage representing 0 in the sent signal.
@@ -34,6 +34,16 @@ PYRAMID = np.array([
 ])
 
 
+def create_wavelets_im(size, waves):
+    im = np.zeros((size, size))
+    cen = size/2
+    for i in range(size):
+        for j in range(size):
+            dist = np.sqrt((i - cen) ** 2 + (j - cen) ** 2)
+            im[i, j] = np.cos((waves * np.pi * dist) / cen)
+    im = (im + 1) / 2
+    return im
+
 
 def read_image(filename):
     """Reads an image from a file into a 3-dimensional tensor (height, width, channel)."""
@@ -43,16 +53,31 @@ def read_image(filename):
 
 
 def flatten_image(im):
+    """
+    Returns a 1D array where each value is the value of a pixel or endline.
+    """
     im = im + BLACK_VAL
     #This part adds a column to the end of the image.
     im_with_endline = np.full((im.shape[0], im.shape[1] + 1), ENDLINE_VAL).astype(np.float64)
     im_with_endline[:, :-1] = im
     flattened = im_with_endline.flatten()
-    # Adding the start signal. One more pixel is added because of linearlization of the signal.
-    flattened = np.concatenate([np.full((START_SIG_LEN + 1,), ENDLINE_VAL), flattened])
+    flattened = np.concatenate([START_END_SIG, flattened, START_END_SIG])
     return flattened
 
 
+# def prep_im_to_send(sig):
+#     """
+#     Duplicates the signal such that each pixel is represented by a certain number of array members.
+#     """
+#     sig_to_send = np.empty(0)
+#     for i in range(0, sig.shape[0]):
+#         pixel_sig = np.full((PIXEL_LEN,), sig[i])
+#         sig_to_send = np.concatenate([sig_to_send, pixel_sig])
+#     return sig_to_send
+
+
+# Deprecated for now.
+"""
 def prep_im_to_send(sig):
     # The start signal
     send_sig = np.full((PIXEL_LEN * START_SIG_LEN,), ENDLINE_VAL).astype(np.float64)
@@ -63,46 +88,65 @@ def prep_im_to_send(sig):
         send_sig = np.concatenate([send_sig, pixel_line])
         send_sig = np.concatenate([send_sig, pixel_plateau])
     return send_sig
+"""
 
 
 def modulate(sig, carrier_freq):
-    t = np.arange(sig.shape[0])
-    wave_sig = np.cos(carrier_freq * t)
+    t = np.arange(0, SIGNAL_LEN, SIGNAL_LEN/sig.shape[0])
+    wave_sig = np.sin(carrier_freq * t)
     sig = sig * wave_sig
     sig = sig * AMPLITUDE + OFFSET
     return sig
 
 
 def send_im(im, carrier_freq, show_sig=False):
-    plt.imshow(im, 'gray')
-    plt.show()
-    flattened = flatten_image(im)
-    sig_to_send = prep_im_to_send(flattened)
+    sig_to_send = flatten_image(im)
     send_x = np.arange(sig_to_send.shape[0])
     mod_sig = modulate(sig_to_send, carrier_freq)
     mod_x = np.arange(mod_sig.shape[0])
     if show_sig:
+        plt.imshow(im, 'gray')
+        plt.show()
         plt.plot(send_x, sig_to_send)
         plt.show()
         plt.plot(mod_x, mod_sig)
         plt.show()
+        fourier_sig = np.fft.fft(mod_sig)
+        plt.plot(np.real(fourier_sig))
+        plt.plot(np.imag(fourier_sig), c='red')
+        plt.show()
     return sig_to_send
 
 
-def demodulate(sig, carrier_freq):
+def demodulate(sig, carrier_freq, plot=False):
     fourier_sig = np.fft.fft(sig)
-    fourier_sig = np.fft.fftshift(fourier_sig)
-    freq_interval = 2 * np.pi / sig.shape[0]
-    plt.plot(fourier_sig)
-    plt.show()
-    am_shift = round(carrier_freq / freq_interval)
-    # Shifts the signal in frequency space according to the carrier frequency.
-    fourier_sig = np.roll(fourier_sig, am_shift)
-    plt.plot(fourier_sig)
-    plt.show()
-    demod_sig = np.fft.ifft(fourier_sig)
-    plt.plot(demod_sig)
-    plt.show()
+    pos_fourier_sig = np.concatenate([fourier_sig[0:round(sig.shape[0]/2)], np.zeros(round(sig.shape[0]/2))])
+    shifted_fourier_sig = np.roll(pos_fourier_sig, round(-2 * carrier_freq))
+    demod_sig = np.fft.ifft(shifted_fourier_sig) * 2j
+    if plot:
+        plt.plot(np.real(fourier_sig))
+        plt.plot(np.imag(fourier_sig), c='red')
+        plt.show()
+        plt.plot(np.real(shifted_fourier_sig))
+        plt.plot(np.imag(shifted_fourier_sig), c='red')
+        plt.show()
+        plt.plot(np.real(demod_sig))
+        plt.plot(np.imag(demod_sig), c='red')
+        plt.show()
+    return demod_sig
+
+
+    # freq_interval = 2 * np.pi / sig.shape[0]
+    # plt.plot(fourier_sig)
+    # plt.show()
+    # am_shift = round(carrier_freq / freq_interval)
+    # # Shifts the signal in frequency space according to the carrier frequency.
+    # fourier_sig = np.roll(fourier_sig, am_shift)
+    # plt.plot(fourier_sig)
+    # plt.show()
+    # demod_sig = np.fft.ifft(fourier_sig)
+    # plt.plot(demod_sig)
+    # plt.show()
 
 
 def test_simple_demodulation():
@@ -116,43 +160,45 @@ def test_simple_demodulation():
     plt.show()
     plt.plot(original)
     plt.show()
-    # a = np.zeros(1000)
-    # a[100] = 1
-    # b = np.fft.ifft(a)
-    # plt.plot(a)
-    # plt.show()
-    # plt.plot(b)
-    # plt.show()
 
 
 def test_demodulation():
-    x = np.arange(0, 10, 0.01)
-    sine_sig = np.sin(x)
-    carrier_sig = np.cos(10*x)
-    send_sig = sine_sig * carrier_sig
+    carrier_freq = 50
+    sig_freq = 1
+    samples = 1000
+    T = 4 * np.pi
+    x = np.arange(0, T, T/samples)
+    orig_sig = np.array(x)
+    fourier_orig = np.fft.fft(orig_sig)
+    carrier_sig = np.sin(carrier_freq * x)
+    send_sig = orig_sig * carrier_sig
     fourier_sig = np.fft.fft(send_sig)
-    # not sure about this part
-    freq_interval = 2 * np.pi / 10
-    freq_shift = round(freq_interval * 10)
+    # The hard part
+    freq_shift = 2 * carrier_freq
     print(freq_shift)
-    shifted_fourier_sig = np.roll(fourier_sig, -freq_shift)
-    demodulated = np.fft.ifft(shifted_fourier_sig)
-    plt.plot(send_sig)
+    # The positive half of the fourier signal.
+    pos_fourier_sig = np.concatenate([fourier_sig[0:round(samples/2)], np.zeros(round(samples/2))])
+    shifted_fourier_sig = np.roll(pos_fourier_sig, -freq_shift)
+    demodulated = 2j * np.fft.ifft(shifted_fourier_sig)
+    plt.plot(np.real(orig_sig))
+    plt.plot(np.imag(orig_sig), c='red')
     plt.show()
-    plt.scatter(x, fourier_sig, s=0.1)
+    plt.plot(np.real(send_sig))
+    plt.plot(np.imag(send_sig), c='red')
     plt.show()
-    plt.plot(shifted_fourier_sig)
+    plt.plot(np.real(fourier_sig))
+    plt.plot(np.imag(fourier_sig), c='red')
     plt.show()
-    plt.plot(demodulated)
+    plt.plot(np.real(shifted_fourier_sig))
+    plt.plot(np.imag(shifted_fourier_sig), c='red')
+    plt.show()
+    plt.plot(np.real(demodulated))
+    plt.plot(np.imag(demodulated), c='red')
     plt.show()
 
 
 if __name__ == "__main__":
     # im = read_image('images/sine.jpg')
-    # im = PYRAMID
-    # freq = 2 * np.pi * CARRIER_WAVENUMBER / PIXEL_LEN
-    # print(freq)
-    # sig_to_send = send_im(im, freq, True)
-    # demodulated = demodulate(sig_to_send, freq)
-    # test_demodulation()
-    test_demodulation()
+    im = create_wavelets_im(50, 5)
+    sig_to_send = send_im(im, CARRIER_FREQ, True)
+    demodulated = demodulate(sig_to_send, CARRIER_FREQ, True)
